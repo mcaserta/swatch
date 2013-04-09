@@ -1,9 +1,9 @@
 package com.mirkocaserta.swatch
 
-import java.nio.file.{WatchEvent, Paths, Path, FileSystems}
 import concurrent.future
-import scala.util.{Failure, Success, Try}
+import java.nio.file.{WatchEvent, Paths, Path, FileSystems}
 import java.nio.file.WatchEvent.Kind
+import util.{Failure, Success, Try}
 
 object Swatch {
   import concurrent.ExecutionContext.Implicits.global
@@ -20,7 +20,7 @@ object Swatch {
 
   case object Overflow extends EventType
 
-  case class SwatchEvent(tpe: EventType, path: Option[Path] = None)
+  case class SwatchEvent(tpe: EventType, path: Path)
 
   private[this] implicit def eventType2Kind(et: EventType) = {
     import java.nio.file.StandardWatchEventKinds._
@@ -72,7 +72,7 @@ object Swatch {
                   case _ ⇒
                     val ev = event.asInstanceOf[WatchEvent[Path]]
                     val tpe = kind2EventType(ev.kind)
-                    listener(SwatchEvent(tpe, Some(ev.context)))
+                    listener(SwatchEvent(tpe, ev.context))
                     if (!key.reset) loop = false
                 }
             }

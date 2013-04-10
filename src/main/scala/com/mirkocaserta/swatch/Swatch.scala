@@ -1,14 +1,16 @@
 package com.mirkocaserta.swatch
 
 import concurrent.future
-import java.nio.file.{WatchEvent, Paths, Path, FileSystems}
+import java.nio.file._
+import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.WatchEvent.Kind
-import util.{Failure, Success, Try}
+import util.Try
+import scala.util.Success
+import scala.util.Failure
 
 object Swatch {
-  import concurrent.ExecutionContext.Implicits.global
 
-  private[this] val watchService = FileSystems.getDefault.newWatchService
+  type Listener = (SwatchEvent) ⇒ Unit
 
   sealed trait EventType
 
@@ -20,7 +22,15 @@ object Swatch {
 
   case object Overflow extends EventType
 
-  case class SwatchEvent(tpe: EventType, path: Path)
+  sealed trait SwatchEvent {
+    def path: Path
+  }
+
+  case class Create(path: Path) extends SwatchEvent
+
+  case class Modify(path: Path) extends SwatchEvent
+
+  case class Delete(path: Path) extends SwatchEvent
 
   private[this] implicit def eventType2Kind(et: EventType) = {
     import java.nio.file.StandardWatchEventKinds._
@@ -44,21 +54,49 @@ object Swatch {
     }
   }
 
+  /**
+   * Watch the given path.
+   *
+   * @param path the path to watch
+   * @param recurse should subdirs be watched too?
+   * @param listener events will be sent here
+   * @param eventTypes event types to watch for
+   */
   def watch(path: String,
-            listener: (SwatchEvent) ⇒ Unit,
+            recurse: Boolean,
+            listener: Listener,
             eventTypes: EventType*) {
-    watch(Paths.get(path), listener, eventTypes: _*)
+    watch(Paths.get(path), recurse, listener, eventTypes: _*)
   }
 
+  /**
+   * Watch the given path.
+   *
+   * @param path the path to watch
+   * @param recurse should subdirs be watched too?
+   * @param listener events will be sent here
+   * @param eventTypes event types to watch for
+   */
   def watch(path: Path,
-            listener: (SwatchEvent) ⇒ Unit,
+            recurse: Boolean,
+            listener: Listener,
             eventTypes: EventType*) {
-    path.register(watchService, eventTypes map eventType2Kind: _*)
+    val watchService = FileSystems.getDefault.newWatchService
 
-    var loop = true
+    if (recurse) {
+      Files.walkFileTree(path, new SimpleFileVisitor[Path] {
+        override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
+          watch(path, false, listener, eventTypes: _*)
+          FileVisitResult.CONTINUE
+        }
+      })
+    } else path.register(watchService, eventTypes map eventType2Kind: _*)
+
+    import concurrent.ExecutionContext.Implicits.global
 
     future {
       import collection.JavaConversions._
+      var loop = true
 
       while (loop) {
         Try(watchService.take) match {
@@ -72,11 +110,16 @@ object Swatch {
                   case _ ⇒
                     val ev = event.asInstanceOf[WatchEvent[Path]]
                     val tpe = kind2EventType(ev.kind)
-                    listener(SwatchEvent(tpe, ev.context))
+                    val notification = tpe match {
+                      case Create ⇒ Create(path.resolve(ev.context))
+                      case Modify ⇒ Modify(path.resolve(ev.context))
+                      case Delete ⇒ Delete(path.resolve(ev.context))
+                    }
+                    listener(notification)
                     if (!key.reset) loop = false
                 }
             }
-          case Failure(e) ⇒ // ignored for now. TODO: do something?
+          case Failure(e) ⇒ // ignore failure, just as IRL
         }
       }
     }

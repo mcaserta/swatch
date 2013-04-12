@@ -1,6 +1,7 @@
-
 Swatch is an (hopefully) very simple wrapper around the
 [Java 7 WatchService API](http://docs.oracle.com/javase/tutorial/essential/io/notification.html).
+
+[Binaries](https://bintray.com/pkg/show/general/mcaserta/github-releases/swatch)
 
 Usage is pretty straightforward:
 

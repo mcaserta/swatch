@@ -1,12 +1,15 @@
 package com.mirkocaserta.swatch
 
-import org.specs2.mutable.Specification
 import java.nio.file.{Path, Paths, Files}
+import org.slf4j.LoggerFactory
+import org.specs2.mutable.Specification
 
 class SwatchSpec extends Specification {
 
   import collection.mutable.Queue
   import Swatch._
+
+  val log = LoggerFactory.getLogger(getClass)
 
   "Swatch" should {
     "notify the listener when a file is created" in {
@@ -16,10 +19,11 @@ class SwatchSpec extends Specification {
       val listener = (ev: SwatchEvent) ⇒ {
         events enqueue ev
       }
-      watch(dir, true, listener, Create)
+      watch(dir, Seq(Create), listener)
       var tmpFile: Option[Path] = None
       doFileSystemWork {
-         tmpFile = Some(Files.createTempFile(dir, "file-", ""))
+        tmpFile = Some(Files.createTempFile(dir, "file-", ""))
+        log.debug(s"tmpFile=$tmpFile")
       }
       tmpFile must beSome[Path]
       events.size must be equalTo 1
@@ -37,7 +41,7 @@ class SwatchSpec extends Specification {
   private[this] def tmp = Files.createTempDirectory(Paths.get("target"), "watch-")
 
   private[this] def sleep(seconds: Int) {
-    println(s"sleeping for $seconds seconds...")
+    log.debug(s"sleeping for $seconds seconds...")
     Thread.sleep(seconds * 1000)
   }
 

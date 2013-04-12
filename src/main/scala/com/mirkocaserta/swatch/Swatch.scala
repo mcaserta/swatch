@@ -1,14 +1,20 @@
 package com.mirkocaserta.swatch
 
+import akka.actor.ActorRef
 import concurrent.future
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.WatchEvent.Kind
-import util.Try
-import scala.util.Success
-import scala.util.Failure
+import language.implicitConversions
+import org.slf4j.LoggerFactory
+import util.{Success, Failure, Try}
 
+/**
+ * A wrapper for a Java 7 [[java.nio.file.WatchService]].
+ */
 object Swatch {
+
+  val log = LoggerFactory.getLogger(getClass)
 
   type Listener = (SwatchEvent) ⇒ Unit
 
@@ -54,39 +60,41 @@ object Swatch {
     }
   }
 
-  /**
-   * Watch the given path.
-   *
-   * @param path the path to watch
-   * @param recurse should subdirs be watched too?
-   * @param listener events will be sent here
-   * @param eventTypes event types to watch for
-   */
-  def watch(path: String,
-            recurse: Boolean,
-            listener: Listener,
-            eventTypes: EventType*) {
-    watch(Paths.get(path), recurse, listener, eventTypes: _*)
-  }
+  implicit def string2path(path: String): Path = Paths.get(path)
 
   /**
-   * Watch the given path.
+   * Message class for the SwatchActor.
    *
    * @param path the path to watch
-   * @param recurse should subdirs be watched too?
-   * @param listener events will be sent here
    * @param eventTypes event types to watch for
+   * @param recurse should subdirs be watched too?
+   * @param listener an optional [[akka.actor.ActorRef]]
+   *                 where notifications will get sent to;
+   *                 if unspecified, the [[akka.actor.Actor#sender]]
+   *                 ref will be used
+   */
+  case class Watch(path: Path, eventTypes: Seq[EventType], recurse: Boolean = false, listener: Option[ActorRef] = None)
+
+  /**
+   * Watch the given path by using a Java 7
+   * [[java.nio.file.WatchService]].
+   *
+   * @param path the path to watch
+   * @param eventTypes event types to watch for
+   * @param listener events will be sent here
+   * @param recurse should subdirs be watched too?
    */
   def watch(path: Path,
-            recurse: Boolean,
+            eventTypes: Seq[EventType],
             listener: Listener,
-            eventTypes: EventType*) {
+            recurse: Boolean = false) {
+    log.debug(s"watch(): entering; path='$path', eventTypes='$eventTypes', listener='$listener', recurse=$recurse")
     val watchService = FileSystems.getDefault.newWatchService
 
     if (recurse) {
       Files.walkFileTree(path, new SimpleFileVisitor[Path] {
         override def preVisitDirectory(path: Path, attrs: BasicFileAttributes) = {
-          watch(path, false, listener, eventTypes: _*)
+          watch(path, eventTypes, listener)
           FileVisitResult.CONTINUE
         }
       })
@@ -106,7 +114,7 @@ object Swatch {
                 import java.nio.file.StandardWatchEventKinds.OVERFLOW
 
                 event.kind match {
-                  case OVERFLOW ⇒ // must be ignored
+                  case OVERFLOW ⇒ // weeee
                   case _ ⇒
                     val ev = event.asInstanceOf[WatchEvent[Path]]
                     val tpe = kind2EventType(ev.kind)
@@ -115,14 +123,19 @@ object Swatch {
                       case Modify ⇒ Modify(path.resolve(ev.context))
                       case Delete ⇒ Delete(path.resolve(ev.context))
                     }
+                    log.debug(s"watch(): notifying listener; notification=$notification")
                     listener(notification)
-                    if (!key.reset) loop = false
+                    if (!key.reset) {
+                      log.debug("watch(): reset unsuccessful, exiting the loop")
+                      loop = false
+                    }
                 }
             }
           case Failure(e) ⇒ // ignore failure, just as IRL
         }
       }
     }
+    log.debug(s"watch(): exiting; path='$path', eventTypes='$eventTypes', listener='$listener', recurse=$recurse")
   }
 
 }

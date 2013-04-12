@@ -5,11 +5,7 @@ import Swatch._
 object Example extends App {
   val twoMinutes = 2 * 60 * 1000
 
-  val listener = (ev: SwatchEvent) ⇒ {
-    println(ev)
-  }
-
-  watch("src/test/", true, listener, Create, Modify, Delete)
+  watch("src/test/", Seq(Create, Modify, Delete), println, true)
 
   Thread.sleep(twoMinutes)
 }

@@ -14,12 +14,11 @@ watch("plugins", Seq(Create, Modify, Delete), println, true)
 This registers a [WatchService](http://docs.oracle.com/javase/7/docs/api/java/nio/file/WatchService.html)
 on the `plugins` directory and its subdirectories (because of
 the `true` value being passed to the `recursive` argument).
-
-The `WatchService` will watch for creation, modification and
-deletion of files. Notifications will get sent to the println
+The `WatchService` will then watch for creation, modification and
+deletion of files. Notifications will get sent to the `println`
 function.
 
-If you want (and you sure will) customize your notifications
+If you want to (and you sure will) customize your notifications
 listener, it's as easy as defining a function such as:
 
 ```scala
@@ -53,3 +52,6 @@ Your sending actor will then start receiving `SwatchEvent`
 messages. You can optionally specify a different actor to
 be notified of `SwatchEvent`s, via the optional `listener`
 parameter.
+
+If you need further info, take a look at the scaladocs in the 
+source code. I've tried to make it as estensive as possible.
